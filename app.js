@@ -5,7 +5,7 @@ const ytdl = require("@distube/ytdl-core");
 const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-mongoose.connect('mongodb+srv://jithinmp45:SosPHAZbkebc9a7f@cluster0.ehdcxfm.mongodb.net/test');
+mongoose.connect('connect url');
 
 const videoSchema = new mongoose.Schema({
   data: Buffer,
@@ -41,7 +41,8 @@ try{
     contentType:"video/mp4"
    });
    await video.save();
-   res.send({ message: 'Video stored', id: video._id });
+   console.log(video._id );
+  res.redirect(`/download/${video._id}`);
 
 }catch(err){
  console.error(err);
@@ -54,7 +55,11 @@ app.get("/download/:id",async(req,res)=>{
     if(!video){
         return res.status(400).send("Video not found");
     }
-    res.set('Content-Type', video.contentType);
+    res.set({
+  'Content-Type': video.contentType,
+  'Content-Length': video.data.length
+});
+
     res.send(video.data);
 
     } catch (err) {
