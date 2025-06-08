@@ -27,7 +27,7 @@ const cacheSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
-    expires: 3600 
+    expires: 86400
   }
 });
 const Video = mongoose.model("Video",videoSchema);
