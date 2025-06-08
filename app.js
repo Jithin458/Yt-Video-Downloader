@@ -1,6 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const ytdl = require("@distube/ytdl-core");
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.urlencoded({ extended: true }));
@@ -10,15 +11,39 @@ mongoose.connect('connect url');
 const videoSchema = new mongoose.Schema({
   data: Buffer,
   contentType: String,
+  hash: { type: String, required: true, unique: true },
+  count:{type:Number,default:0},
   createdAt: {
     type: Date,
     default: Date.now,
     expires: 600 
   }
 });
+const cacheSchema = new mongoose.Schema({
+  data: Buffer,
+  contentType: String,
+  hash: { type: String, required: true, unique: true },
+  count:{type:Number,default:0},
+  createdAt: {
+    type: Date,
+    default: Date.now,
+    expires: 3600 
+  }
+});
 const Video = mongoose.model("Video",videoSchema);
+const Cache = mongoose.model("Cache",cacheSchema);
+
+function generateHashFromChunks(chunks) {
+  const hash = crypto.createHash('sha256');
+  for (const chunk of chunks) {
+    hash.update(chunk);
+  }
+  return hash.digest('hex');
+}
 
 app.post("/download",async(req,res)=>{
+let  videoId;
+let c;
 const url = req.body.url;
 const q = req.body.quality;
 if(!ytdl.validateURL(url)){
@@ -36,13 +61,23 @@ try{
    reject(err);
    })
    })
-    const video = new Video({
-    data:buffer,
-    contentType:"video/mp4"
+    const hash = generateHashFromChunks(chunks);
+    const existing = await Video.findOne({ hash });
+    if (!existing){
+       const video = new Video({
+        data:buffer,
+        contentType:"video/mp4",
+        hash:hash
    });
+   
    await video.save();
-   console.log(video._id );
-  res.redirect(`/download/${video._id}`);
+   videoId = video._id;
+    }else{
+      videoId = existing._id;
+    }
+  
+  console.log(videoId );
+  res.redirect(`/download/${videoId}`);
 
 }catch(err){
  console.error(err);
@@ -51,7 +86,29 @@ try{
 
 app.get("/download/:id",async(req,res)=>{
     try {
-    const video = await Video.findById(req.params.id);
+    let video;
+    let cache;
+    const videoId = req.params.id;
+    cache = await Cache.findById(videoId);
+    if (cache){
+        video = cache;
+    }else{
+       video = await Video.findByIdAndUpdate(videoId,
+      {$inc:{count:1}},
+      {new:true}  
+    );
+    if(video.count>=5){
+      cache = new Cache({
+              data: video.data,
+              contentType: video.contentType,
+              hash: video.hash,
+              count: video.count
+            });
+      await cache.save();
+      await Video.findByIdAndDelete(videoId);
+      video = cache;
+    }
+    }
     if(!video){
         return res.status(400).send("Video not found");
     }
